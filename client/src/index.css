@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+@font-face {
+  font-family: "default";
+  src: url("../assets/latin-modern-sans.msansquot8-regular.otf");
+}
+
+
+
+body {
+  background-color: black;
+  color: white;
+  font-family: default;
+}
