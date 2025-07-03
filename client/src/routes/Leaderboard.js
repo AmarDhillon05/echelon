@@ -2,11 +2,56 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import axios from "axios";
+import pako from 'pako'
 
 export default function Leaderboard() {
   const navigate = useNavigate();
   const api_link = "http://localhost:2022/api";
   const { id } = useParams();
+
+
+  //Data is going to be shortened via these funcs to save memory
+  //Used everywhere flexibly except in embeddings where obviously we need 
+  //the original string, and is only needed for files
+  async function compressFileToBase64(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+
+    // Compress using pako (deflate)
+    const compressed = pako.deflate(uint8Array);
+
+    // Convert to base64 safely
+    const base64 = uint8ArrayToBase64(compressed)
+      .replace(/\+/g, '-')   // URL-safe base64
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    return {
+      base64,
+      mimeType: file.type || 'application/octet-stream',
+    };
+  }
+
+  function uint8ArrayToBase64(uint8Array) {
+    // Avoids call stack limits by processing in chunks
+    let binary = '';
+    const len = uint8Array.length;
+    const chunkSize = 0x8000;
+    for (let i = 0; i < len; i += chunkSize) {
+      binary += String.fromCharCode.apply(
+        null,
+        uint8Array.subarray(i, i + chunkSize)
+      );
+    }
+    return btoa(binary);
+  }
+        
+
+
+    
+    
+
+
 
   const [ld, setLd] = useState({});
   const [contributors, setContributors] = useState([]);
@@ -14,15 +59,8 @@ export default function Leaderboard() {
   const [user, setUser] = useState({});
   const [contributorValid, setContributorValid] = useState(null);
 
-  async function getBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
 
+  
   useEffect(() => {
     const userObj = localStorage.getItem("user");
     if (!userObj) navigate("/login");
@@ -63,7 +101,7 @@ export default function Leaderboard() {
     const data = Object.fromEntries(formData.entries());
 
     for (const [key, value] of Object.entries(data)) {
-      if (value instanceof File) {
+      if (value instanceof File) { //Case of a file
         if (!value || value.size === 0) return;
 
         const dtype = ld.required.find((x) => x.name === key)?.type || "";
@@ -71,7 +109,9 @@ export default function Leaderboard() {
           document.getElementById("subErrText").innerHTML = `Uploaded wrong file type to "${key}"`;
           return;
         }
-        data[key] = await getBase64(value);
+        
+        data[key] = await compressFileToBase64(value)
+  
       } else {
         if (!value) {
           document.getElementById("subErrText").innerHTML = "Fill out all fields!";
@@ -112,15 +152,26 @@ export default function Leaderboard() {
       <div className="flex flex-row w-full p-8 gap-8">
         {/* LEFT: Leaderboard */}
         <div className="w-1/2 bg-gray-900 shadow-[0_0_20px_#a855f7] rounded-xl p-6">
-          <h1 className="text-4xl font-bold text-purple-400 mb-2">{ld.name}</h1>
-          <p className="text-xl mb-4 text-gray-300">{ld.description}</p>
+
+          <div className = "flex flex-row align-center">
+            <div>
+              <h1 className="text-4xl font-bold text-purple-400 mb-2">{ld.name}</h1>
+              <p className="text-xl mb-4 text-gray-300">{ld.description}</p>
+            </div>
+            <div className = "ml-auto">
+              <p className = "text-2xl font-bold mb-4 text-purple-300">{
+                  ld.n_votes ? ld.n_votes : 0
+                } votes</p>
+            </div>
+          </div>
 
           <h2 className="text-3xl font-semibold mb-2 text-white">Leaderboard</h2>
           {ld.order && ld.order.length > 0 ? (
             <div className="space-y-2">
               {ld.order.map((subname, subKey) => {
                 const sub = ld.submissions[subname];
-                return (
+                if(sub){
+                  return (
                   <div key={subKey} className="flex justify-between items-center bg-gray-800 px-4 py-2 rounded">
                     <p className="text-white">{subname}</p>
                     <div className="flex gap-4 text-sm text-gray-300">
@@ -129,6 +180,13 @@ export default function Leaderboard() {
                     </div>
                   </div>
                 );
+                }
+                else{
+                  return (
+                    <div></div>
+                  )
+                }
+                
               })}
             </div>
           ) : (
@@ -145,104 +203,114 @@ export default function Leaderboard() {
 
         {/* RIGHT: Submission Form */}
         <div className="w-1/2 bg-gray-900 shadow-[0_0_20px_#a855f7] rounded-xl p-6">
-          <h1 className="text-4xl font-semibold text-purple-400 mb-6">Create a Submission</h1>
+          
+          {ld.locked && 
+            <p>This submission has been locked. Check out the leaderboard!</p>
+          }
 
-          <div className="mb-4">
-            <label htmlFor="additionalContributors" className="block text-lg mb-1">
-              Additional Contributor
-            </label>
-            <input
-              id="additionalContributors"
-              type="text"
-              value={currentContributor}
-              onChange={(e) => setCurrentContributor(e.target.value)}
-              className="bg-black text-white p-2 rounded w-full border border-purple-700"
-            />
-            {currentContributor && (
-              <p className={`mt-1 text-sm ${contributorValid ? "text-green-400" : "text-red-400"}`}>
-                {contributorValid ? "This contributor exists" : "This contributor doesn't exist"}
-              </p>
-            )}
+          {!ld.locked && <div>
+            <h1 className="text-4xl font-semibold text-purple-400 mb-6">Create a Submission</h1>
 
-            <button
-              className="mt-2 px-4 py-2 bg-purple-700 rounded hover:bg-purple-800 transition"
-              onClick={() => {
-                if (contributorValid && currentContributor !== "") {
-                  setContributors([...contributors, currentContributor]);
-                  setCurrentContributor("");
-                }
-              }}
-            >
-              Add
-            </button>
-          </div>
-
-          {contributors.length > 0 && (
-            <div className="mb-6">
-              <p className="text-lg font-semibold mb-2">Contributors:</p>
-              <ul className="space-y-2">
-                {contributors.map((name, idx) => (
-                  <li key={idx} className="flex justify-between items-center bg-gray-800 px-3 py-2 rounded">
-                    <span>{name}</span>
-                    <button
-                      onClick={() =>
-                        setContributors(contributors.filter((_, i) => i !== idx))
-                      }
-                      className="text-red-400 hover:text-red-600"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <form id="submission" onSubmit={newSubmission} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block mb-1">Submission Name</label>
+            <div className="mb-4">
+              <label htmlFor="additionalContributors" className="block text-lg mb-1">
+                Additional Contributor
+              </label>
               <input
-                name="name"
-                id="name"
+                id="additionalContributors"
                 type="text"
+                value={currentContributor}
+                onChange={(e) => setCurrentContributor(e.target.value)}
                 className="bg-black text-white p-2 rounded w-full border border-purple-700"
               />
+              {currentContributor && (
+                <p className={`mt-1 text-sm ${contributorValid ? "text-green-400" : "text-red-400"}`}>
+                  {contributorValid ? "This contributor exists" : "This contributor doesn't exist"}
+                </p>
+              )}
+
+              <button
+                className="mt-2 px-4 py-2 bg-purple-700 rounded hover:bg-purple-800 transition"
+                onClick={() => {
+                  if (contributorValid && currentContributor !== "") {
+                    setContributors([...contributors, currentContributor]);
+                    setCurrentContributor("");
+                  }
+                }}
+              >
+                Add
+              </button>
             </div>
 
-            {ld.required && ld.required.map((req, key) => (
-              <div key={key}>
-                <label htmlFor={req.name} className="block mb-1">
-                  {req.name} ({req.type})
-                </label>
-                {["text", "link"].includes(req.type) ? (
-                  <input
-                    type="text"
-                    name={req.name}
-                    id={req.name}
-                    className="bg-black text-white p-2 rounded w-full border border-purple-700"
-                  />
-                ) : (
-                  <input
-                    type="file"
-                    name={req.name}
-                    id={req.name}
-                    className="bg-black text-white p-2 rounded w-full border border-purple-700"
-                  />
-                )}
+            {contributors.length > 0 && (
+              <div className="mb-6">
+                <p className="text-lg font-semibold mb-2">Contributors:</p>
+                <ul className="space-y-2">
+                  {contributors.map((name, idx) => (
+                    <li key={idx} className="flex justify-between items-center bg-gray-800 px-3 py-2 rounded">
+                      <span>{name}</span>
+                      <button
+                        onClick={() =>
+                          setContributors(contributors.filter((_, i) => i !== idx))
+                        }
+                        className="text-red-400 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ))}
+            )}
 
-            <button
-              type="submit"
-              className="px-6 py-2 bg-purple-600 text-white font-semibold rounded hover:bg-purple-700 transition"
-            >
-              Submit
-            </button>
-          </form>
+            <form id="submission" onSubmit={newSubmission} className="space-y-4">
+              <div>
+                <label htmlFor="name" className="block mb-1">Submission Name</label>
+                <input
+                  name="name"
+                  id="name"
+                  type="text"
+                  className="bg-black text-white p-2 rounded w-full border border-purple-700"
+                />
+              </div>
 
-          <p className="text-red-500 mt-2" id="subErrText"></p>
-          <p className="text-green-500 mt-1" id="subConfText"></p>
+              {ld.required && ld.required.map((req, key) => (
+                <div key={key}>
+                  <label htmlFor={req.name} className="block mb-1">
+                    {req.name} ({req.type})
+                  </label>
+                  {["text", "link"].includes(req.type) ? (
+                    <input
+                      type="text"
+                      name={req.name}
+                      id={req.name}
+                      className="bg-black text-white p-2 rounded w-full border border-purple-700"
+                    />
+                  ) : (
+                    <input
+                      type="file"
+                      name={req.name}
+                      id={req.name}
+                      className="bg-black text-white p-2 rounded w-full border border-purple-700"
+                    />
+                  )}
+                </div>
+              ))}
+
+              <button
+                type="submit"
+                className="px-6 py-2 bg-purple-600 text-white font-semibold rounded hover:bg-purple-700 transition"
+              >
+                Submit
+              </button>
+            </form>
+
+            <p className="text-red-500 mt-2" id="subErrText"></p>
+            <p className="text-green-500 mt-1" id="subConfText"></p>
+
+            </div>}
+
         </div>
+
       </div>
     </div>
   );
