@@ -7,6 +7,7 @@ const Sub = require("../models/submission.model.js");
 const User = require("../models/user.model.js");
 const { Pinecone } = require("@pinecone-database/pinecone");
 const axios = require("axios")
+const pako = require("pako")
 
 
 
@@ -27,14 +28,120 @@ function removeDataUriPrefix(b64String) {
 
 
 
+
+// Initialize Pinecone client and central index
+const pc = new Pinecone({
+  apiKey: process.env.PC_KEY,
+});
+
+const index = pc.Index("echelon")
+
+require("../config/db.config")();
+
+app.get("/", (req, res) => {
+  res.send("Hello from the leaderboard API!");
+});
+
+
+
+// Clear all leaderboards and submissions (commented out by default)
+async function clearDb() {
+  await Ld.deleteMany({});
+  await Sub.deleteMany({});
+  await index.deleteAll();
+  console.log("Cleared Ld DB")
+}
+//clearDb();
+
+
+
+//In order to allow titles as "sluggified" (required for dbs)
+ function encodeString(str) {
+  const compressed = pako.deflate(str);
+  const base64 = btoa(String.fromCharCode(...compressed));
+  return base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+  
+  
+function decodeString(encoded) {
+  let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  while (base64.length % 4) base64 += '=';
+
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  const decompressed = pako.inflate(bytes, { to: 'string' });
+
+  return decompressed;
+}
+
+
+  //For files, since the input is compress base-64 (what we get and send back to the frontend)
+  //We only need the reversal beacuse that 
+  function decompressToBase64(base64, mimeType = 'application/octet-stream') {
+    // Restore standard base64
+    if(base64.base64){
+      base64 = base64.base64
+    }
+    let paddedBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+    while (paddedBase64.length % 4 !== 0) {
+      paddedBase64 += '=';
+    }
+
+    // Convert base64 to Uint8Array
+    const compressedBytes = base64ToUint8Array(paddedBase64);
+
+    // Decompress using pako (inflate)
+    const decompressedBytes = pako.inflate(compressedBytes);
+
+    // Convert back to base64 for data URI
+    const decompressedBase64 = uint8ArrayToBase64(decompressedBytes);
+
+    return `data:${mimeType};base64,${decompressedBase64}`;
+  }
+
+  function base64ToUint8Array(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function uint8ArrayToBase64(uint8Array) {
+    // Avoids call stack limits by processing in chunks
+    let binary = '';
+    const len = uint8Array.length;
+    const chunkSize = 0x8000;
+    for (let i = 0; i < len; i += chunkSize) {
+      binary += String.fromCharCode.apply(
+        null,
+        uint8Array.subarray(i, i + chunkSize)
+      );
+    }
+    return btoa(binary);
+  }
+      
+
+
 // Calling embed API
 async function embed(input, req, size = 1024) {
+  console.log("Got an embed request")
 
   //Properly formatting the data, then making request
   let json_body = []
   req.forEach(r => {
+    let dataRaw = input[r.name]
+    if(r.type != "link" && r.type != "text"){
+      dataRaw = decompressToBase64(dataRaw)
+    }
+
     let data = {
-      "data" : removeDataUriPrefix(input[r.name]),
+      "data" : removeDataUriPrefix(dataRaw),
       "type" : r.type
     }
     
@@ -58,48 +165,6 @@ function dummyEmbed() {
 }
 
 //y
-
-
-
-
-
-// Initialize Pinecone client and central index
-const pc = new Pinecone({
-  apiKey: process.env.PC_KEY,
-});
-
-const index = pc.Index("echelon")
-
-require("../config/db.config")();
-
-app.get("/", (req, res) => {
-  res.send("Hello from the leaderboard API!");
-});
-
-// Clear all leaderboards and submissions (commented out by default)
-async function clearDb() {
-  await Ld.deleteMany({});
-  await Sub.deleteMany({});
-}
-//clearDb();
-
-
-
-//In order to allow titles as "sluggified" (required for dbs)
-function encodeString(str) {
-  return Buffer.from(str, 'utf-8').toString('hex').replace(/(..)/g, '$1-').slice(0, -1);
-}
-
-function decodeString(encoded) {
-  if(!encoded){
-    encoded = ""
-  }
-  const hex = encoded.replace(/-/g, '');
-  return Buffer.from(hex, 'hex').toString('utf-8');
-}
-
-
-
 
 
 
@@ -195,7 +260,8 @@ app.post("/createSubmission", async (req, res) => {
     }
 
     // Validate required fields
-    const mandatoryKeys = ld.required.map((x) => Object.keys(x)[0]);
+    console.log(ld.required)
+    const mandatoryKeys = ld.required.map((x) => x.name);
     const dataKeys = Object.keys(data);
     for (const key of mandatoryKeys) {
       if (!dataKeys.includes(key)) {
@@ -213,11 +279,13 @@ app.post("/createSubmission", async (req, res) => {
 
     // Update leaderboard submissions and save
     newSublist[name] = { elo: 100, rank };
-    await Ld.updateOne({ _id: ld._id }, { $set: { submissions: newSublist } });
+    const resLd = await Ld.updateOne({ _id: ld._id }, { $set: { submissions: newSublist } });
+    
 
     // Create submission document in MongoDB
     const entry = { ...req.body, elo: 100, rank, name };
     const sub = await Sub.create(entry);
+    
 
     // Add submission ID to each contributor's submissions list
     for (const contributor of sub.contributors) {
@@ -242,15 +310,17 @@ app.post("/createSubmission", async (req, res) => {
         {
           id: encodeString(JSON.stringify(rawNameAndLd)),
           values: await embed(metadata, ld.required),
-          metadata: { rank, leaderboard, elo: 100 },
+          metadata: { rank, leaderboard, elo: 100, subid : sub._id },
         },
       ]);
     } catch (e) {
+      console.log("Defaulting to dummy embed")
+      console.log(e)
       await index.upsert([
         {
           id: encodeString(JSON.stringify(rawNameAndLd)),
           values: dummyEmbed(),
-          metadata: { rank, leaderboard, elo: 100 },
+          metadata: { rank, leaderboard, elo: 100, subid : sub._id },
         },
       ]);
     }
@@ -259,6 +329,7 @@ app.post("/createSubmission", async (req, res) => {
     console.log(e)
 
     // On error, attempt cleanup
+    console.log("Ran into a submission error, attempting cleanup")
     try {
       let { name, leaderboard } = req.body;
 
@@ -301,9 +372,8 @@ app.post("/createSubmission", async (req, res) => {
 
 
 
-
+//
 //Poll + Rank
-//TODO - put this in a separate route
 
 app.post("/poll", async (req, res) => {
 
@@ -354,6 +424,7 @@ app.post("/poll", async (req, res) => {
     const firstSubName = firstPicks.at(-1);
     const firstSub = await Sub.find({ "name": firstSubName });
     if (!firstSub || firstSub.length === 0) {
+        console.log("First submission not found")
         return res.status(404).json({ error: "First submission not found" });
     }
 
@@ -380,16 +451,19 @@ app.post("/poll", async (req, res) => {
     }
 
     let matches = (await index.query(args)).matches.filter(x => x.id !== fetchId);
+    console.log(matches)
 
 
     let secondSub = null;
     let score = null;
+    let subid = null;
 
     for (const sub of matches) {
         const subName = decodeString(JSON.parse(decodeString(sub.id)).name);
         if (!previousPicks || !previousPicks.includes(subName)) {
             secondSub = subName;
             score = sub.score;
+            subid = matches[0].metadata.subid
             break;
         }
     }//
@@ -397,20 +471,24 @@ app.post("/poll", async (req, res) => {
     if (secondSub == null && matches.length > 0) {
         secondSub = decodeString(JSON.parse(decodeString(matches[0].id)).name);
         score = matches[0].score;
+        subid = matches[0].metadata.subid
     }
 
     if (!secondSub) {
+        console.log("No valid second subission found")
         return res.status(404).json({ error: "No valid second submission found" });
     }
 
     
     // Re-query second submission from MongoDB using its name and leaderboard
-    const secondSubData = (await Sub.find({
-      "name": encodeString(secondSub),
-      "leaderboard": decodeString(leaderboard)
+    console.log(subid)
+    let secondSubData = (await Sub.find({
+      "_id" : subid
     }))[0];
 
+
     if (!secondSubData) {
+      console.log("Second submission not found")
         return res.status(404).json({ error: "Second submission not found in DB" });
     }
 
@@ -421,7 +499,7 @@ app.post("/poll", async (req, res) => {
     return res.status(200).json({ choice1: firstSub[0], choice2: secondSubData, score });
 
 });
-
+//
 
 
 app.post("/rank", async (req, res) => {
@@ -491,14 +569,18 @@ app.post("/rank", async (req, res) => {
     {
       id: winnerId,
       values: winnerVector,
-      metadata: { rank: oldSubs[winner.name].rank, elo: eloWinner, leaderboard : encLd },
+      metadata: { rank: oldSubs[winner.name].rank, elo: eloWinner, leaderboard : encLd, subid : winner._id },
     },
     {
       id: loserId,
       values: loserVector,
-      metadata: { rank: oldSubs[loser.name].rank, elo: eloLoser, leaderboard : encLd },
+      metadata: { rank: oldSubs[loser.name].rank, elo: eloLoser, leaderboard : encLd, subid : loser._id },
     },
   ]);
+
+  //If everything went well, increase the vote count
+  let n_votes = ld.n_votes ? ld.n_votes + 1 : 1
+  await Ld.updateOne({ name: encodeString(winner.leaderboard) }, { $set: { n_votes } })
 
 
   res.status(200).json({ success: true, message: "Thanks for playing" });
@@ -598,6 +680,7 @@ app.post("/getLeaderboardById", async (req, res) => {
       ld.order = []
     }
 
+
     res.status(200).json({ "leaderboard" : ld })
   }
   else{
@@ -607,6 +690,23 @@ app.post("/getLeaderboardById", async (req, res) => {
 })
 
 
+
+app.post("/toggleLock", async (req, res) => {
+  const { id, lock } = req.body
+  if(!id || (lock != true && lock != false)){
+    res.status(500).json({"error" : "This request requires ID"})
+  }
+
+ else{
+    let conf = await Ld.findOneAndUpdate({ _id: id }, {
+          locked : lock,
+        });
+    console.log(conf)
+
+    res.status(200).json({ "success" : "true" })
+ }
+
+})
 
 
 
