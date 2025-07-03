@@ -2,11 +2,64 @@ import Navbar from "../components/Navbar";
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
+import pako from "pako"
 
 export default function ComparePage() {
   const navigate = useNavigate();
   const api_link = "http://localhost:2022/api";
   const { id } = useParams();
+
+  
+  function decompressToBase64(base64, mimeType = 'application/octet-stream') {
+    if(base64.base64){
+      base64 = base64.base64
+    }
+    // Restore standard base64
+    let paddedBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
+    while (paddedBase64.length % 4 !== 0) {
+      paddedBase64 += '=';
+    }
+
+    // Convert base64 to Uint8Array
+    const compressedBytes = base64ToUint8Array(paddedBase64);
+
+    // Decompress using pako (inflate)
+    const decompressedBytes = pako.inflate(compressedBytes);
+
+    // Convert back to base64 for data URI
+    const decompressedBase64 = uint8ArrayToBase64(decompressedBytes);
+
+    return `data:${mimeType};base64,${decompressedBase64}`;
+  }
+
+  function base64ToUint8Array(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+
+  function uint8ArrayToBase64(uint8Array) {
+    // Avoids call stack limits by processing in chunks
+    let binary = '';
+    const len = uint8Array.length;
+    const chunkSize = 0x8000;
+    for (let i = 0; i < len; i += chunkSize) {
+      binary += String.fromCharCode.apply(
+        null,
+        uint8Array.subarray(i, i + chunkSize)
+      );
+    }
+    return btoa(binary);
+  }
+      
+    
+
+  
 
   const [ld_name, setLdName] = useState(undefined);
   const [ld, setLd] = useState(undefined);
@@ -19,7 +72,7 @@ export default function ComparePage() {
       const loser = choices[pick === "1" ? "choice2" : "choice1"]._id;
       const similarity = choices.score;
 
-      setPreviousPicks([...previousPicks, choices["choice" + pick].name]);
+      setPreviousPicks([...previousPicks, choices["choice" + pick].name, choices ["choice" + (pick === "1" ? "1" : "2")].name]);
 
       await axios.post(api_link + "/leaderboard/rank", { winner, loser, similarity });
     }
@@ -103,10 +156,11 @@ export default function ComparePage() {
                         }
 
                         if (dtype === "image") {
+                          console.log(decompressToBase64(v))
                           return (
                             <div key={i} className="flex flex-col items-center">
                               <span className="text-sm text-gray-400 mb-1">{k}</span>
-                              <img src={v} alt="submission image" className="max-w-full max-h-60 rounded shadow" />
+                              <img src={(decompressToBase64(v))} alt="submission image" className="max-w-full max-h-60 rounded shadow" />
                             </div>
                           );
                         }
@@ -116,7 +170,7 @@ export default function ComparePage() {
                             <div key={i} className="text-center">
                               <p className="text-sm text-gray-400 mb-1">{k}</p>
                               <audio controls className="w-full">
-                                <source src={v} type="audio/mpeg" />
+                                <source src={decompressToBase64(v)} type="audio/mpeg" />
                                 Your browser does not support audio.
                               </audio>
                             </div>
@@ -128,7 +182,7 @@ export default function ComparePage() {
                             <div key={i} className="text-center">
                               <p className="text-sm text-gray-400 mb-1">{k}</p>
                               <video controls className="mx-auto max-w-full max-h-72 rounded shadow">
-                                <source src={v} type="video/mp4" />
+                                <source src={decompressToBase64(v)} type="video/mp4" />
                                 Your browser does not support video.
                               </video>
                             </div>
