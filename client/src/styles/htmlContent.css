@@ -1,0 +1,23 @@
+.html-content h1 {
+  @apply text-purple-600 font-bold text-4xl leading-tight;
+}
+
+.html-content h2 {
+  @apply text-purple-600 font-bold text-3xl leading-snug;
+}
+
+.html-content h3 {
+  @apply text-purple-600 font-bold text-2xl leading-snug;
+}
+
+.html-content h4 {
+  @apply text-purple-600 font-bold text-xl leading-normal;
+}
+
+.html-content h5 {
+  @apply text-purple-600 font-bold text-lg leading-normal;
+}
+
+.html-content h6 {
+  @apply text-purple-600 font-bold text-base leading-normal;
+}
