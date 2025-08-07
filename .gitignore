@@ -1,0 +1,5 @@
+../database/node_modules
+../client/node_modules
+../database/.env
+../api/.env
+../client/.env

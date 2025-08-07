@@ -1,65 +1,115 @@
 import Navbar from "../components/Navbar";
+import SingleReq from "../components/SingleReq";
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import pako from "pako"
+import { decompressToBase64 } from "../utils/slug";
+
+
+function Req({ entries, reqName, i, dtype, captions }) {
+  const slides = [];
+  let currentSlide = [];
+  let ind = 0;
+
+  for (const entry of entries) {
+    const comp = (
+      <SingleReq
+        idx={ind}
+        dtype={dtype}
+        k={captions[ind] || reqName}
+        v={entry}
+        key={ind}
+      />
+    );
+
+    if (
+      dtype === "image" ||
+      dtype === "video" ||
+      (dtype === "link" &&
+        ((entry.includes("youtube") && entry.includes("embed")) ||
+        (entry.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i) || entry.startsWith("data:image"))  || 
+          entry.match(/\.(mp4|webm|ogg)$/i) ||
+          entry.match(/\.(mp3|wav|ogg)$/i)))
+    ) {
+      if (currentSlide.length > 0) slides.push(currentSlide);
+      slides.push([comp]);
+      currentSlide = [];
+    } else {
+      currentSlide.push(comp);
+    }
+
+    ind += 1;
+  }
+
+  if (currentSlide.length > 0) slides.push(currentSlide);
+
+  const [idx, setIdx] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  const prevSlide = () => {
+    setFade(false);
+    setTimeout(() => {
+      setIdx((prev) => (prev - 1 + slides.length) % slides.length);
+      setFade(true);
+    }, 300);
+  };
+
+  const nextSlide = () => {
+    setFade(false);
+    setTimeout(() => {
+      setIdx((prev) => (prev + 1) % slides.length);
+      setFade(true);
+    }, 300);
+  };
+
+  return (
+    <div className="p-4 bg-zinc-900 rounded-2xl text-white shadow-[0_0_10px_#a855f7aa]">
+      <h2 className="text-lg font-semibold text-purple-400 mb-4">{reqName}</h2>
+
+      <ul
+        className={`flex flex-col gap-4 list-none transition-opacity duration-300 ease-in-out ${
+          fade ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        {slides.length > 0 && slides[idx].map((comp, i) => (
+          <li key={i}>{comp}</li>
+        ))}
+      </ul>
+
+      {slides.length > 1 && (
+        <div className="flex justify-center gap-4 mt-4">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              prevSlide();
+            }}
+            className="hover:bg-purple-700 text-white w-8 h-8 flex items-center justify-center"
+            aria-label="Previous slide"
+          >
+            ‹
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              nextSlide();
+            }}
+            className="hover:bg-purple-700 text-white w-8 h-8 flex items-center justify-center"
+            aria-label="Next slide"
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 
 export default function ComparePage() {
   const navigate = useNavigate();
   const api_link = "http://localhost:2022/api";
   const { id } = useParams();
-
-  
-  function decompressToBase64(base64, mimeType = 'application/octet-stream') {
-    if(base64.base64){
-      base64 = base64.base64
-    }
-    // Restore standard base64
-    let paddedBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
-    while (paddedBase64.length % 4 !== 0) {
-      paddedBase64 += '=';
-    }
-
-    // Convert base64 to Uint8Array
-    const compressedBytes = base64ToUint8Array(paddedBase64);
-
-    // Decompress using pako (inflate)
-    const decompressedBytes = pako.inflate(compressedBytes);
-
-    // Convert back to base64 for data URI
-    const decompressedBase64 = uint8ArrayToBase64(decompressedBytes);
-
-    return `data:${mimeType};base64,${decompressedBase64}`;
-  }
-
-  function base64ToUint8Array(base64) {
-    const binary = atob(base64);
-    const len = binary.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  }
-
-
-  function uint8ArrayToBase64(uint8Array) {
-    // Avoids call stack limits by processing in chunks
-    let binary = '';
-    const len = uint8Array.length;
-    const chunkSize = 0x8000;
-    for (let i = 0; i < len; i += chunkSize) {
-      binary += String.fromCharCode.apply(
-        null,
-        uint8Array.subarray(i, i + chunkSize)
-      );
-    }
-    return btoa(binary);
-  }
-      
-    
-
-  
 
   const [ld_name, setLdName] = useState(undefined);
   const [ld, setLd] = useState(undefined);
@@ -71,20 +121,19 @@ export default function ComparePage() {
       const winner = choices["choice" + pick]._id;
       const loser = choices[pick === "1" ? "choice2" : "choice1"]._id;
       const similarity = choices.score;
-
-      setPreviousPicks([...previousPicks, choices["choice" + pick].name, choices ["choice" + (pick === "1" ? "1" : "2")].name]);
-
-      await axios.post(api_link + "/leaderboard/rank", { winner, loser, similarity });
+      setPreviousPicks([...previousPicks, choices["choice" + pick].name, choices["choice" + (pick === "1" ? "1" : "2")].name]);
+      await axios.post(api_link + "/rank/rank", { winner, loser, similarity });
     }
 
     setChoices({});
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     if (ld_name !== undefined) {
-      const { data } = await axios.post(api_link + "/leaderboard/poll", {
+      const { data } = await axios.post(api_link + "/rank/poll", {
         leaderboard: ld_name,
         previousPicks,
       });
+      console.log(data)
       setChoices(data);
     }
   }
@@ -106,102 +155,54 @@ export default function ComparePage() {
   }, [ld_name]);
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white">
       <Navbar />
 
-      <div className="max-w-5xl mx-auto px-4 py-10">
+      <div className="max-w-6xl mx-auto px-4 py-10">
         <h1 className="text-4xl font-bold mb-8 text-center">
           Playing <span className="text-purple-400">{ld_name}</span>
         </h1>
 
-        <div
-          className={`$ {
-            choices.choice1 && choices.choice2 ? "opacity-100" : "opacity-0"
-          } transition-all duration-500 ease-in-out`}
-        >
-          {choices.choice1 && choices.choice2 && ld && (
-            <div className="flex flex-col md:flex-row gap-6 justify-between">
-              {[choices.choice1, choices.choice2].map((choice, index) => (
-                <div
-                  key={index}
-                  className="flex-1 bg-gray-900 hover:bg-gray-800 hover:scale-[1.02] transition-transform duration-200 rounded-2xl shadow-xl p-6 cursor-pointer"
-                  onClick={() => {
-                    submitAndPoll(index === 0 ? "1" : "2");
-                  }}
-                >
-                  <h2 className="text-2xl font-semibold mb-2 text-purple-400">{choice.name}</h2>
-                  <p className="text-sm text-gray-300 mb-4">ELO: {Math.round(choice.elo)}</p>
+        {choices.choice1 && choices.choice2 && ld && (
+          <div className="flex flex-col md:flex-row gap-6 justify-between">
+            {[choices.choice1, choices.choice2].map((choice, index) => (
+              <div
+                key={index}
+                className="max-w-1/2 flex-1 bg-zinc-950 hover:bg-zinc-900 rounded-2xl p-6 shadow-[0_0_25px_#a855f7aa] cursor-pointer transition-transform hover:scale-[1.02]"
+                onClick={() => submitAndPoll(index === 0 ? "1" : "2")}
+              >
+                <h2 className="text-2xl font-semibold mb-2 text-purple-400">{choice.name}</h2>
+                <p className="text-sm text-gray-300 mb-4">ELO: {Math.round(choice.elo)}</p>
 
-                  <div className="space-y-3">
-                    {Object.entries(choice.data)
-                      .filter(([k]) => k !== "name")
-                      .map(([k, v], i) => {
-                        const dtype = ld.required.find((x) => x.name.trim() === k.trim())?.type;
+                <div className="space-y-3">
+                  {ld.required.map((req, i) => {
+                    const name = req.name;
+                  
+                    const keys = Object.keys(choice.data).filter((b) => {
+                      const escapeRegex = (str) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                      const regex = new RegExp(`^${escapeRegex(name)} \\d+$`);
+                      return b == name || regex.test(b);
+                    });
+                    const entries = keys.map((x) => choice.data[x]);
+                    const caption_keys = keys.map((x) => `${x} caption`);
+                    const captions = caption_keys.map((x) => choice.data[x]);
 
-                        if (dtype === "text") {
-                          return (
-                            <div className="flex justify-between text-sm" key={i}>
-                              <span className="text-gray-400">{k}</span>
-                              <span className="text-white">{v}</span>
-                            </div>
-                          );
-                        }
-
-                        if (dtype === "link") {
-                          return (
-                            <a className="block text-purple-400 underline text-sm" key={i} href={v} target="_blank">
-                              {k}
-                            </a>
-                          );
-                        }
-
-                        if (dtype === "image") {
-                          console.log(decompressToBase64(v))
-                          return (
-                            <div key={i} className="flex flex-col items-center">
-                              <span className="text-sm text-gray-400 mb-1">{k}</span>
-                              <img src={(decompressToBase64(v))} alt="submission image" className="max-w-full max-h-60 rounded shadow" />
-                            </div>
-                          );
-                        }
-
-                        if (dtype === "audio") {
-                          return (
-                            <div key={i} className="text-center">
-                              <p className="text-sm text-gray-400 mb-1">{k}</p>
-                              <audio controls className="w-full">
-                                <source src={decompressToBase64(v)} type="audio/mpeg" />
-                                Your browser does not support audio.
-                              </audio>
-                            </div>
-                          );
-                        }
-
-                        if (dtype === "video") {
-                          return (
-                            <div key={i} className="text-center">
-                              <p className="text-sm text-gray-400 mb-1">{k}</p>
-                              <video controls className="mx-auto max-w-full max-h-72 rounded shadow">
-                                <source src={decompressToBase64(v)} type="video/mp4" />
-                                Your browser does not support video.
-                              </video>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div className="flex justify-between text-sm" key={i}>
-                            <span className="text-gray-400">{k}</span>
-                            <span className="text-white">{v}</span>
-                          </div>
-                        );
-                      })}
-                  </div>
+              
+                    return (
+                      <Req
+                        entries={entries}
+                        reqName={name}
+                        i={i}
+                        dtype={req.type}
+                        captions={captions}
+                      />
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

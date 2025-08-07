@@ -61,7 +61,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="px-8 py-8 min-h-screen bg-black text-white">
+    <div className="px-6 py-8 min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white">
       <Navbar />
       <AddLd
         show={showCreateLd}
@@ -85,15 +85,15 @@ export default function Dashboard() {
             onChange={(e) => setSearchTerm(e.target.value)}
             value={searchTerm}
             placeholder="Search..."
-            className="w-full p-3 bg-black border-2 border-white rounded-md mb-4 text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-purple-500 shadow-[0_0_10px_#a855f7]"
+            className="w-full p-3 bg-black border border-purple-700 rounded-md mb-4 text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-purple-500 shadow-[0_0_10px_#a855f7]"
           />
 
-          <div className="flex flex-col gap-2 bg-purple-800 bg-opacity-30 p-4 rounded-md shadow-[0_0_10px_#a855f7] mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-purple-800/10 p-4 rounded-md shadow-[0_0_10px_#a855f7] mb-8">
             {searchMatches.map((ld, key) => (
               <a
                 key={key}
                 href={`/leaderboard/${ld._id}`}
-                className="text-lg text-purple-300 hover:text-purple-100 transition-all"
+                className="text-lg text-purple-300 hover:text-purple-100 transition-all hover:underline"
               >
                 {ld.name}
               </a>
@@ -113,7 +113,7 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <div className="w-full flex flex-row flex-wrap">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {leaderboardData.length === 0 ? (
               <p className="italic text-gray-400">No leaderboards yet. Click + to create one.</p>
             ) : (
@@ -121,14 +121,15 @@ export default function Dashboard() {
                 <a
                   href={`/leaderboard/${ld.id}`}
                   key={key}
-                  className="bg-gray-900 hover:bg-gray-800 rounded-xl shadow-md p-6 mb-6 mx-4 w-2/5 transition-all"
+                  className="relative bg-zinc-950 hover:bg-zinc-900 rounded-2xl p-6 shadow-[0_0_20px_#a855f7aa] overflow-hidden transition-all group"
                 >
-                  <h2 className="text-2xl font-semibold text-purple-300 mb-2">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-purple-900/20 via-purple-800/10 to-transparent opacity-60 blur-xl group-hover:opacity-80 transition" />
+                  <h2 className="text-2xl font-semibold text-purple-300 mb-2 z-10 relative">
                     {ld.name}
                   </h2>
                   {ld.order && ld.order.length > 0 ? (
-                    <div className="space-y-2">
-                      {ld.order.map((subname, subKey) => {
+                    <div className="space-y-2 z-10 relative">
+                      {ld.order.slice(0, 3).map((subname, subKey) => {
                         const sub = ld.submissions[subname];
                         return (
                           <div
@@ -138,12 +139,10 @@ export default function Dashboard() {
                             <p className="text-white">{subname}</p>
                             <div className="flex gap-4 text-sm text-gray-300">
                               <p>
-                                Rank:{" "}
-                                <span className="text-white font-semibold">{sub.rank}</span>
+                                Rank: <span className="text-white font-semibold">{sub.rank}</span>
                               </p>
                               <p>
-                                ELO:{" "}
-                                <span className="text-white font-semibold">{parseInt(sub.elo)}</span>
+                                ELO: <span className="text-white font-semibold">{parseInt(sub.elo)}</span>
                               </p>
                             </div>
                           </div>
@@ -167,13 +166,13 @@ export default function Dashboard() {
               No submissions yet. Go find a cool leaderboard and submit to it!
             </p>
           ) : (
-            <div className="grid gap-6 mt-8">
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6 mt-8">
               {subs.map((sub, key) => (
                 <div
                   key={key}
-                  className="bg-gray-800 rounded-2xl p-6 shadow-[0_0_10px_#a855f7] hover:scale-[1.01] transition-transform duration-200"
+                  className="bg-zinc-900 rounded-2xl p-6 shadow-[0_0_10px_#a855f7] hover:scale-[1.02] transition-transform duration-200"
                 >
-                  <p className="text-5xl font-extrabold text-center text-purple-300 mb-4">
+                  <p className="text-5xl font-extrabold text-center text-purple-300 mb-4 animate-pulse">
                     #{sub.rank}
                   </p>
                   <div className="text-lg space-y-1 text-center">
