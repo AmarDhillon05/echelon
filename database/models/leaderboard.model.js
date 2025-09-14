@@ -1,4 +1,5 @@
-const { Schema, model } = require("mongoose");
+//const { Schema, model } = require("mongoose");
+import {Schema, model} from "mongoose"
 
 const leaderboardSchema = new Schema({
 
@@ -39,4 +40,5 @@ const leaderboardSchema = new Schema({
 
 const Leaderboard = model("leaderboards", leaderboardSchema);
 
-module.exports = Leaderboard;
+export default Leaderboard
+//module.exports = Leaderboard;

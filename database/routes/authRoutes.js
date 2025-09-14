@@ -1,3 +1,19 @@
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+
+import User from "../models/user.model.js";
+import connectDB from "../config/db.config.js";
+
+dotenv.config();
+
+const app = express.Router();
+
+connectDB();
+
+
+/*
 require("dotenv").config();
 
 const express = require("express");
@@ -10,6 +26,7 @@ const bcrypt = require("bcrypt");
 
 
 require("../config/db.config")();
+*/
 
 app.get("/", (req, res) => {
   res.send("Hello from the users api!");
@@ -121,4 +138,5 @@ app.post("/update", async (req, res) => {
 });
 
 
-module.exports = app
+export default app
+//module.exports = app

@@ -1,3 +1,31 @@
+
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+
+import Ld from "../models/leaderboard.model.js";
+import Sub from "../models/submission.model.js";
+import User from "../models/user.model.js";
+
+import { Pinecone } from "@pinecone-database/pinecone";
+
+import {
+  encodeString,
+  decodeString,
+  decompressToBase64,
+  uint8ArrayToBase64,
+  embed,
+  dummyEmbed
+} from "../utils/slug.js";
+
+dotenv.config();
+
+import connectDB from "../config/db.config.js";
+connectDB()
+
+
+
+/*
 require("dotenv").config();
 
 const express = require("express");
@@ -7,7 +35,7 @@ const Sub = require("../models/submission.model.js");
 const User = require("../models/user.model.js");
 const { Pinecone } = require("@pinecone-database/pinecone");
 const {encodeString, decodeString, decompressToBase64, uint8ArrayToBase64, embed, dummyEmbed} = require("../utils/slug.js")
-
+*/
 
 
 //Poll + Rank
@@ -18,6 +46,17 @@ const pc = new Pinecone({
 });
 
 const index = pc.Index("echelon")
+
+
+
+
+
+
+
+
+
+
+//////
 
 
 
@@ -35,8 +74,8 @@ app.post("/poll", async (req, res) => {
 
     if (previousPicks) {
         previousPicks.reverse();
-        previousPicks = previousPicks.map(x => encodeString(x));
     }
+    console.log(previousPicks)
 
     const ld = await Ld.find({ "name": leaderboard });
     if (!ld || ld.length === 0) {
@@ -48,12 +87,16 @@ app.post("/poll", async (req, res) => {
         return res.status(500).json({ error: "This leaderboard doesn't have enough submissions for ranked play" });
     }
 
+
+
     function useTargetElo(allSubmissions) {
         let elos = Object.keys(allSubmissions).map(x => allSubmissions[x].elo);
         let bestMatchIdx = elos
             .map(x => Math.abs(x - targetElo))
             .reduce((maxIdx, curr, idx, array) => curr > array[maxIdx] ? idx : maxIdx, 0);
-        return Object.keys(allSubmissions)[bestMatchIdx];
+
+        let bestMatch = Object.keys(allSubmissions)[bestMatchIdx];
+        return bestMatch
     }
 
     
@@ -64,7 +107,10 @@ app.post("/poll", async (req, res) => {
 
         let choice = useTargetElo(allSubmissions);
         firstPicks.push(choice);
-        if (!previousPicks || !previousPicks.includes(choice)) break;
+        if (!previousPicks || !previousPicks.includes(decodeString(choice))){
+          console.log(decodeString(choice))
+          break
+        } 
 
         delete allSubmissions[choice];
     }
@@ -109,6 +155,7 @@ app.post("/poll", async (req, res) => {
 
     for (const sub of matches) {
         const subName = decodeString(JSON.parse(decodeString(sub.id)).name);
+        console.log(subName)
         if (!previousPicks || !previousPicks.includes(subName)) {
             secondSub = subName;
             score = sub.score;
@@ -148,7 +195,24 @@ app.post("/poll", async (req, res) => {
     return res.status(200).json({ choice1: firstSub[0], choice2: secondSubData, score });
 
 });
-//
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 app.post("/rank", async (req, res) => {
@@ -166,16 +230,19 @@ app.post("/rank", async (req, res) => {
   }
 
   const ld = (await Ld.find({ name: winner.leaderboard }))[0];
-  console.log(ld)
 
   // Calculating elo change, softening it for lower similarities
   let eloWinner = winner.elo >= 100 ? winner.elo : 100; // Since minimum is 100
   let eloLoser = loser.elo >= 100 ? loser.elo : 100;
-  const e = 1 / (1 + 10 ** ((winner.elo - loser.elo) / 400));
+  const e = 1 / (1 + 10 ** ((loser.elo - winner.elo) / 400));
   const k = 40;
   eloWinner += k * similarity * e;
   eloLoser -= k * similarity * e;
-  eloLoser = eloLoser >= 100 ? eloLoser : 100;
+  
+  //Reclamp
+  eloWinner = Math.max(eloWinner, 100);
+  eloLoser = Math.max(eloLoser, 100);
+
 
   // Update elo in Sub DB
   await Sub.updateOne({ _id: winner._id }, { $set: { elo: eloWinner } });
@@ -191,6 +258,7 @@ app.post("/rank", async (req, res) => {
     }
   }
 
+  /*
   const sortedElos = Object.values(oldSubs)
     .map((s) => s.elo)
     .sort((a, b) => b - a);
@@ -198,6 +266,14 @@ app.post("/rank", async (req, res) => {
   for (const key of Object.keys(oldSubs)) {
     oldSubs[key].rank = sortedElos.indexOf(oldSubs[key].elo) + 1;
   }
+  */
+
+  let subsArray = Object.entries(oldSubs);
+  subsArray.sort((a, b) => b[1].elo - a[1].elo);
+  subsArray.forEach(([key, sub], index) => {
+    oldSubs[key].rank = index + 1;
+  });
+
 
 
   await Ld.updateOne({ name: winner.leaderboard }, { $set: { submissions: oldSubs } });
@@ -209,7 +285,6 @@ app.post("/rank", async (req, res) => {
 
   // Fetch existing vectors from Pinecone
   const pineconeFetch = await index.fetch([winnerId, loserId]);
-  console.log(winnerId, loserId)
   const winnerVector = pineconeFetch.records[winnerId].values;
   const loserVector = pineconeFetch.records[loserId].values;
 
@@ -247,5 +322,5 @@ app.post("/rank", async (req, res) => {
 
 
 
-
-module.exports = app
+export default app
+//module.exports = app

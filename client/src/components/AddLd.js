@@ -55,7 +55,9 @@ export default function AddLd({ show, exit, ldStateUpdate }) {
   const [requirements, setRequirements] = useState([]);
   const [showAmount, setShowAmount] = useState(false);
 
-  const dburi = "http://localhost:2022/api";
+
+  
+  const dburi = process.env.REACT_APP_DBAPI_URI;
 
 
 
@@ -91,10 +93,13 @@ export default function AddLd({ show, exit, ldStateUpdate }) {
       if (data.error) {
         document.getElementById("reqErrText").innerHTML = `Ran into error: ${data.error}`;
       } else {
+        console.log(data)
         localStorage.setItem("user", JSON.stringify(data.user));
         ldStateUpdate(data.user);
         exit();
       }
+
+      
     } catch (e) {
       document.getElementById("reqErrText").innerHTML = `Ran into error: ${e.message}`;
     }
@@ -108,7 +113,7 @@ export default function AddLd({ show, exit, ldStateUpdate }) {
         show ? "scale-100 opacity-100" : "scale-90 opacity-0 pointer-events-none"
       } transition-all duration-200 fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50`}
     >
-      <div className="bg-zinc-950 p-8 rounded-2xl shadow-[0_0_30px_#a855f7] w-[90%] max-w-2xl h-[90%] overflow-y-auto border border-purple-700">
+      <div className="bg-zinc-950 p-8 rounded-2xl shadow-[0_0_10px_#a855f7] w-[90%] max-w-2xl h-[90%] overflow-y-auto border border-purple-700">
         {/* Header */}
         <div className="flex items-center mb-6">
           <h1 className="text-2xl font-bold text-purple-400 drop-shadow-[0_0_6px_#a855f7]">

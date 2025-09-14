@@ -1,4 +1,5 @@
-const { Schema, model } = require("mongoose");
+//const { Schema, model } = require("mongoose");
+import {Schema, model} from "mongoose"
 
 const submissionSchema = new Schema({
   // Leaderboard it is assocated with (Leaderboard ID)
@@ -14,6 +15,10 @@ const submissionSchema = new Schema({
     type: Number,
     required: true,
     default: 100,
+  },
+  likes: {
+    type: Number, 
+    default: 0 //Idk if we're gonna use this
   },
   rank: {
     type: Number,
@@ -36,4 +41,5 @@ const submissionSchema = new Schema({
 
 const Submission = model("submissions", submissionSchema);
 
-module.exports = Submission;
+export default Submission
+//module.exports = Submission;

@@ -1,3 +1,26 @@
+import dotenv from "dotenv";
+import express from "express";
+import mongoose from "mongoose";
+
+import Ld from "../models/leaderboard.model.js";
+import Sub from "../models/submission.model.js";
+import User from "../models/user.model.js";
+
+import { Pinecone } from "@pinecone-database/pinecone";
+
+import {
+  encodeString,
+  decodeString,
+  decompressToBase64,
+  uint8ArrayToBase64,
+  embed,
+  dummyEmbed
+} from "../utils/slug.js";
+
+dotenv.config();
+
+
+/*
 require("dotenv").config();
 
 const express = require("express");
@@ -7,13 +30,14 @@ const Sub = require("../models/submission.model.js");
 const User = require("../models/user.model.js");
 const { Pinecone } = require("@pinecone-database/pinecone");
 const {encodeString, decodeString, decompressToBase64, uint8ArrayToBase64, embed, dummyEmbed} = require("../utils/slug.js")
+require("../config/db.config")();
+*/
 
-
-
-const embed_url = "http://3.93.168.118:8000"
 
 const app = express.Router();
 
+import connectDB from "../config/db.config.js";
+connectDB()
 
 
 
@@ -24,8 +48,8 @@ const pc = new Pinecone({
 });
 
 const index = pc.Index("echelon")
+console.log(`Connected index ${index}`)
 
-require("../config/db.config")();
 
 app.get("/", (req, res) => {
   res.send("Hello from the leaderboard API!");
@@ -45,9 +69,9 @@ async function clearDb() {
   }
   console.log("Cleared Ld DB")
 }
-//clearDb();
+clearDb(); //BABA BLACK SHEEP GIMME SUM WOOL
 
-
+//////
 
 
 
@@ -74,13 +98,14 @@ app.post("/createLeaderboard", async (req, res) => {
 
 
     // Create leaderboard document in MongoDB
-    console.log(coverPhoto)
     coverPhoto = coverPhoto ? coverPhoto : ""
     const ld = await Ld.create({ name, host, description, required, coverPhoto });
 
 
     // Add leaderboard ID to user's leaderboardIds array (if the user exists)
     let user = await User.find({ username: host });
+
+   
     if (user && user[0]) {
       user = user[0]
       const existingIds = user.leaderboardIds || [];
@@ -92,7 +117,7 @@ app.post("/createLeaderboard", async (req, res) => {
 
     res.status(201).json({ leaderboard: ld, success: true, user });
   } catch (e) {
-    console.log(e)
+    console.error(e)
     // Cleanup on error
     let { name, host } = req.body;
 
@@ -113,7 +138,8 @@ app.post("/createLeaderboard", async (req, res) => {
 
 
 app.post("/createSubmission", async (req, res) => {
-  console.log(JSON.stringify(req.body))
+  console.log("Got a create submission, which is sick")
+
   try {
     let { name, leaderboard, contributors, data } = req.body;
 
@@ -148,7 +174,7 @@ app.post("/createSubmission", async (req, res) => {
 
     // Validate required fields
     const dataKeys = Object.keys(data)
-    for(req of ld.required){
+    for(let req of ld.required){
 
       let required_keys = [req.name]
       if(req.list == 'yes'){
@@ -163,7 +189,7 @@ app.post("/createSubmission", async (req, res) => {
         }
       }
 
-      for(key of required_keys){
+      for(let key of required_keys){
         if(!dataKeys.includes(key)){
           res.status("500").json({"error" : `Missing key ${key}`})
           return
@@ -178,10 +204,6 @@ app.post("/createSubmission", async (req, res) => {
     const rank = Object.keys(newSublist).length + 1;
     const metadata = { ...data, elo: 100, rank, leaderboard };
     delete metadata.name; // remove name if present
-
-    // Update leaderboard submissions and save
-    newSublist[name] = { elo: 100, rank };
-    const resLd = await Ld.updateOne({ _id: ld._id }, { $set: { submissions: newSublist } });
     
 
     // Create submission document in MongoDB
@@ -199,6 +221,13 @@ app.post("/createSubmission", async (req, res) => {
       }
     }
 
+
+    // Update leaderboard submissions and save
+    newSublist[name] = { elo: 100, subid : sub._id.toString(), rank };
+    const resLd = await Ld.updateOne({ _id: ld._id }, { $set: { submissions: newSublist } });
+
+
+
     res.status(201).json({ submission: sub, success: true });
 
 
@@ -208,6 +237,17 @@ app.post("/createSubmission", async (req, res) => {
     //Done after return because it's non-critical
     //id is encoded JSON of name and leaderboard to make it unique for pc
     //////
+
+
+    //First we do the dummy embed, so we can rank immediately
+    //Then after, we compute embeddings
+    await index.upsert([
+      {
+        id: encodeString(JSON.stringify(rawNameAndLd)),
+        values: dummyEmbed(),
+        metadata: { rank, leaderboard, elo: 100, subid : sub._id },
+      }
+    ])
 
     try {
       await index.upsert([
@@ -232,6 +272,8 @@ app.post("/createSubmission", async (req, res) => {
 
     // On error, attempt cleanup
     console.log("Ran into a submission error, attempting cleanup")
+    console.error(e)
+    
     try {
       let { name, leaderboard } = req.body;
 
@@ -292,7 +334,7 @@ app.post("/searchForLd", async (req, res) => {
       results = await Ld.find()
     }
 
-    for(key of Object.keys(results)){
+    for(let key of Object.keys(results)){
       results[key].name = decodeString(results[key].name)
     }
 
@@ -310,15 +352,17 @@ app.post("/getSubmissionById", async (req, res) => {
     res.status(500).json({ "error" : "Must specify id to use" })
   }
 
+  console.log(`Requested to locate submission ${id}`)
   let sub = await Sub.findById(id)
   if(sub){
     sub = sub.toObject()
-    let ld = await Ld.findOne({"name" : encodeString(sub.leaderboard)})
+    let ld = await Ld.findOne({"name" : sub.leaderboard})
     sub.name = decodeString(sub.name)
     sub.leaderboardId = ld._id.toString()
     res.status(200).json({ "submission" : sub })
   }
   else{
+    console.log("Oh no! This submission doesn't exist!")
     res.status(404).json({ "error" : "Unable to find this id" })
   }
 
@@ -349,7 +393,7 @@ app.post("/getLeaderboardById", async (req, res) => {
       })
 
       //Holding order of submissions
-      order = Object.keys(ld.submissions).map(x => null)
+      let order = Object.keys(ld.submissions).map(x => null)
       Object.keys(ld.submissions).forEach(key => {
         order[ld.submissions[key].rank - 1] = key
       })
@@ -393,5 +437,5 @@ app.post("/toggleLock", async (req, res) => {
 
 
 
-
-module.exports = app;
+export default app
+//module.exports = app;

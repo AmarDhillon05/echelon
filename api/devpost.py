@@ -2,26 +2,61 @@ import requests
 import json
 import os
 import requests
+import zlib
+import base64
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from ai_helpers import generate_html
 
 os.system("clear")
 
 load_dotenv()
 DBAPI_URL = os.getenv("DBAPI_URL")
+print(f"Using dbapi = {DBAPI_URL}")
 
 
 
-#Devpost scraper
-def searchFor(hackathon):
+#For sending
+def compress_to_base64(url):
+    # Add scheme if missing
+    if url.startswith("//"):
+        url = "https:" + url
+
+
+    # Fetch the image from the URL
+    response = requests.get(url)
+    response.raise_for_status()  # raise an error if the request failed
+    data = response.content  # bytes of the image
+
+    # Compress using zlib (equivalent to pako.deflate)
+    compressed = zlib.compress(data, level=9)
+
+    # Standard base64
+    b64 = base64.b64encode(compressed).decode('ascii')
+
+    # Convert to URL-safe base64 (base64url)
+    b64url = b64.replace('+', '-').replace('/', '_').rstrip('=')
+
+    return b64url
+
+
+#Root method
+def find(hackathon):
     api_url = f"https://devpost.com/api/hackathons?search={hackathon}"
     r = requests.get(api_url)
     r.raise_for_status()
     data = r.json()
-    
-    hackathons = data['hackathons']
-    if len(hackathons) == 0:
-        raise NameError("Hackathon not found")
+
+    return data['hackathons']
+
+#Devpost name suggestions
+def searchForName(hackathon):
+    return [i['title'] for i in find(hackathon)]
+
+
+#Devpost scraper
+def searchFor(hackathon):
+    hackathons = find(hackathon)
     
     H = hackathons[0]
     hackathon_title = H['title']
@@ -31,6 +66,20 @@ def searchFor(hackathon):
     r.raise_for_status()
     parser = BeautifulSoup(r.content, "html.parser")
     links = [l['href'] for l in parser.find_all("a", class_ = "link-to-software")]
+    
+
+    #D 
+    hack_url = H['url']
+    r = requests.get(hack_url)
+    r.raise_for_status()
+    parser = BeautifulSoup(r.content, 'html.parser')
+    desc = parser.find('article', id = 'challenge-description')
+    desc = ''.join(desc.stripped_strings)
+
+    #C
+    coverPhoto = H['thumbnail_url']
+    coverPhoto = compress_to_base64(coverPhoto)
+    
     
     L = []
     for l in links: #links to each submission
@@ -59,21 +108,22 @@ def searchFor(hackathon):
         idx_of_builtwith = [idx for idx, i in enumerate(all_divs) if i.has_attr("id") and i['id'] == "built-with"][0]
         info_div = all_divs[idx_of_builtwith - 1]
         info = info_div.decode_contents()
+        info = generate_html(info)
 
         
         #External Links
-        subL = {}
+        subL = {'Devpost' : l}
         links = pparser.find("nav", class_ = "app-links")
-        ul = links.find_all("ul")
-        for lst in ul:
-            ul_name = lst['data-role']
-            ulL = {}
-            els = [el.find('a') for el in lst.find_all("li")]
-            for el in els:
-                href = el['href']
-                name = el.find("span").decode_contents()
-                ulL[name] = href
-            subL[ul_name] = ulL
+        if links is not None:
+            ul = links.find_all("ul")
+            for lst in ul:
+                els = [el.find('a') for el in lst.find_all("li")]
+                for el in els:
+                    href = el['href']
+                    name = el.find("span").decode_contents()
+                    subL[name] = href
+                
+    
 
 
         #Contributors
@@ -82,7 +132,6 @@ def searchFor(hackathon):
         for el in contrib_els:
             if not el.find('img'):
                 contribs[el.decode_contents()] = el['href']
-
 
 
         L.append({
@@ -95,18 +144,21 @@ def searchFor(hackathon):
 
     return {
         "title" : hackathon_title,
+        "coverPhoto" : coverPhoto,
+        "desc" : generate_html(desc),
         "entries" : L
     }
 
 
 
 #Create leaderboard by devpost requirements
-def createDevpostLd(hackathon, host, description):
+def createDevpostLd(hackathon, host):
     hackathon_data = searchFor(hackathon)
     body = {
         "name" : hackathon_data['title'],
         "host" : host,
-        "description" : description,
+        "description" : hackathon_data['desc'],
+        "coverPhoto" : hackathon_data['coverPhoto'],
         "required" : [
             {
                 "name" : "Attatchments",
@@ -132,16 +184,21 @@ def createDevpostLd(hackathon, host, description):
 
 
     r = requests.post(f"{DBAPI_URL}/leaderboard/createLeaderboard", json=body)
+
     r.raise_for_status()
+    return r.json()
+
 
 
 
 #Populates leaderboard from devpost
+#Generator function for response for creating + populating
 def populateDevpostLd(hackathon):
 
     hackathon_data = searchFor(hackathon)
     ld = hackathon_data['title']
-    for hack in hackathon_data['entries']:
+    for hack in hackathon_data['entries']: 
+
         body = {
             "leaderboard" : ld,
             "contributors" : list(hack['contributors'].keys()),
@@ -157,19 +214,20 @@ def populateDevpostLd(hackathon):
             body['data'][f"Attatchments {i} caption"] = name
             body['data'][f"Attatchments {i}"] = hack['attatchments'][name]
         
-        for key in hack['links'].keys():
-            linkset = hack['links'][key]
-            for i, name in enumerate(list(linkset.keys())):
-                body['data'][f"Links {i} caption"] = name
-                body['data'][f"Links {i}"] = linkset[name]
+
+        
+        for i, (key, link) in enumerate(hack['links'].items()):
+            body['data'][f"Links {i} caption"] = key
+            body['data'][f"Links {i}"] = link
+     
 
 
         r = requests.post(f"{DBAPI_URL}/leaderboard/createSubmission", json=body)
-        r.raise_for_status()
+        j = r.json()
+        if j.get('error') is not None:
+            print(j.get('error'))
+
         
 
 
 
-hackathon = "cgcian"
-createDevpostLd(hackathon, "ap", "Some random ass hackathon offa Devpost")
-populateDevpostLd(hackathon)

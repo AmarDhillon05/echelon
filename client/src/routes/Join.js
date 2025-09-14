@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 export default function Join() {
-  const dburi = "http://localhost:2022/api";
+  const dburi = process.env.REACT_APP_DBAPI_URI;
   const navigate = useNavigate();
 
   async function create() {
@@ -58,7 +58,7 @@ export default function Join() {
       </div>
 
       {/* Join Form */}
-      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-8 shadow-[0_0_30px_#a855f7aa] backdrop-blur-sm">
+      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-8 shadow-[0_0_10px_#a855f7aa] backdrop-blur-sm">
         <h1 className="text-4xl font-semibold text-purple-400 mb-10">
           Join the <span className="text-teal-300 font-bold">Race</span>.
         </h1>
@@ -70,7 +70,7 @@ export default function Join() {
           id="joinUsername"
           name="joinUsername"
           placeholder="e.g. spon96"
-          className="p-3 mb-6 w-full rounded-md border border-purple-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          className="p-3 mb-6 w-full rounded-md border border-gray700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
           autoComplete="username"
         />
 
@@ -81,7 +81,7 @@ export default function Join() {
           id="joinEmail"
           name="joinEmail"
           placeholder="example@umd.edu"
-          className="p-3 mb-6 w-full rounded-md border border-purple-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          className="p-3 mb-6 w-full rounded-md border border-gray-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
           autoComplete="email"
         />
 
@@ -93,7 +93,7 @@ export default function Join() {
           name="joinPass"
           type="password"
           placeholder="••••••••••"
-          className="p-3 mb-6 w-full rounded-md border border-purple-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          className="p-3 mb-6 w-full rounded-md border border-gray-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
           autoComplete="new-password"
         />
 
@@ -105,7 +105,7 @@ export default function Join() {
           name="joinPassConf"
           type="password"
           placeholder="••••••••••"
-          className="p-3 mb-6 w-full rounded-md border border-purple-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          className="p-3 mb-6 w-full rounded-md border border-gray-700 bg-black text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
           autoComplete="new-password"
         />
 
