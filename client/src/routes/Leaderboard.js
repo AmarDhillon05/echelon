@@ -10,7 +10,7 @@ import Navbar from "../components/Navbar";
 export default function Leaderboard() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const api_link = "http://localhost:2022/api";
+  const api_link = process.env.REACT_APP_DBAPI_URI;
 
   const [ld, setLd] = useState({});
   const [contributors, setContributors] = useState([]);
@@ -19,6 +19,7 @@ export default function Leaderboard() {
   const [user, setUser] = useState({});
   const [inputs, setInputs] = useState([""]);
   const [captions, setCaptions] = useState([""]);
+  const [expanded, setExpanded] = useState(false);
 
   // Initial setup
   useEffect(() => {
@@ -28,13 +29,41 @@ export default function Leaderboard() {
     updateLd();
   }, []);
 
-  async function updateLd() {
-    const { data } = await axios.post(api_link + "/leaderboard/getLeaderboardById", { id });
-    const ldb = data.leaderboard;
-    ldb.id = id;
-    console.log(ldb.coverPhoto)
-    setLd(ldb);
+
+
+ async function updateLd() {
+  const maxRetries = 10;
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    try {
+      console.log(`Searching leaderboard id ${id}, attempt ${attempt + 1}`);
+
+      const { data } = await axios.post(
+        api_link + "/leaderboard/getLeaderboardById",
+        { id }
+      );
+
+      const ldb = data.leaderboard;
+      ldb.id = id;
+      setLd(ldb);
+
+      return; //  success, exit the function
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxRetries) {
+        console.error(" Max retries reached. Could not fetch leaderboard:", err);
+        throw err;
+      }
+
+      // exponential backoff: 100ms * 2^attempt
+      const delay = 100 * Math.pow(2, attempt);
+      console.warn(` Error occurred. Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
+}
+
 
 
 
@@ -184,24 +213,58 @@ export default function Leaderboard() {
     <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white">
       <Navbar />
       <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
+
+
+
         {/* Leaderboard Panel */}
         <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-[0_0_25px_#a855f7aa]">
           <div className="flex justify-between mb-6">
 
+        <div
+          className="w-full h-60 rounded-xl relative overflow-hidden bg-cover bg-center"
+          style={{
+            backgroundImage: `
+              linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0.4), transparent),
+              url(${decompressbase64(ld.coverPhoto)})
+            `
+          }}
+        >
+          <h1 className="absolute bottom-0 p-6 text-3xl font-bold text-purple-400 drop-shadow-lg">
+            {ld.name}
+          </h1>
+        </div>
 
-            <div
-              className="w-full h-60 rounded-xl bg-cover bg-center relative flex items-center px-6 py-8"
-              style={{ backgroundImage: `url(${decompressbase64(ld.coverPhoto)})` }}
-            >
-              <div className="bg-black/60 p-4 rounded-lg max-w-2xl">
-                <h1 className="text-3xl font-bold text-purple-400">{ld.name}</h1>
-                <p className="text-gray-300">{ld.description}</p>
-              </div>
-            </div>
+
+
 
             
-            <p className="text-lg font-semibold text-purple-300">{ld.n_votes || 0} votes</p>
           </div>
+
+          <p className="text-lg font-semibold text-purple-300">{ld.n_votes || 0} votes</p>
+
+
+       <div className="text-gray-300">
+
+
+      <div
+        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out ${
+          expanded ? "max-h-[20rem]" : "max-h-[1.5rem]"
+        }`}
+      >
+        <p dangerouslySetInnerHTML={{ __html: ld.description }} />
+      </div>
+
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="mt-2 text-purple-400 hover:text-purple-300 text-sm font-medium"
+      >
+        {expanded ? "Show less" : "Show more"}
+      </button>
+
+      
+    </div>
+
+
           <h2 className="text-2xl font-semibold mb-4">Leaderboard</h2>
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
             {ld.order?.length ? (
@@ -209,9 +272,14 @@ export default function Leaderboard() {
                 const sub = ld.submissions?.[subname];
                 if (!sub) return null;
                 return (
-                  <div
+
+
+                  <button
                     key={i}
-                    className="flex justify-between items-center px-4 py-3 bg-gray-800 rounded-lg transition-all duration-300"
+                    className="flex justify-between items-center px-4 py-3 w-80 bg-gray-800 hover:scale-[1.005] hover:bg-gray-900 rounded-lg transition-all duration-300"
+                    onClick={() => {
+                      navigate("/submission/" + ld._id + "-" + sub.subid)
+                    }}
                   >
                     <div className="flex items-center gap-4">
                       <div className="text-xl font-bold text-yellow-400 animate-pulse">#{i + 1}</div>
@@ -221,7 +289,9 @@ export default function Leaderboard() {
                       </div>
                     </div>
                     <span className="text-sm text-gray-300">Rank {sub.rank}</span>
-                  </div>
+                  </button>
+
+
                 );
               })
             ) : (
@@ -235,6 +305,9 @@ export default function Leaderboard() {
             Start Playing
           </button>
         </div>
+
+
+        
 
         {/* Submission Panel */}
         <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 shadow-[0_0_25px_#a855f7aa]">

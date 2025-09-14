@@ -1,12 +1,12 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./routes/Home"
-import Profile from "./routes/Profile"
 import Join from "./routes/Join"
 import Login from "./routes/Login"
 import Dashboard from "./routes/Dashboard"
 import ComparePage from "./routes/ComparePage"
 import Leaderboard from "./routes/Leaderboard";
+import SubmissionPage from "./routes/Submission";
 
 
 export default function App() {
@@ -16,10 +16,10 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="rank/:id" element={<ComparePage />} />
-          <Route path="profile" element={<Profile />} />
           <Route path="join" element={<Join />} />
           <Route path="login" element={<Login />} />
           <Route path="leaderboard/:id" element={<Leaderboard />} />
+          <Route path="submission/:id" element={<SubmissionPage />} />
       </Routes>
     </BrowserRouter>
   );

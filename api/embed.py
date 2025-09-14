@@ -1,16 +1,12 @@
 import base64
 import numpy as np
-import soundfile as sf
 import random
 import string
 import time
 import torch
-import torchaudio
+import librosa
+from pydub import AudioSegment
 import os 
-import sys
-import tempfile
-import cv2
-import flask
 import gc
 from torch import nn
 from PIL import Image
@@ -18,14 +14,18 @@ from io import BytesIO
 from nomic import embed
 from memory_profiler import profile
 from transformers import CLIPProcessor, CLIPModel, Wav2Vec2Processor, Wav2Vec2Model
-from torch.utils.data import DataLoader
 from flask import Flask, request
+import imageio.v3 as iio
+import av
 
 os.system("clear")
 
+#This file is for ec2 rewrites
+
+
 #Models
-clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
 
 w2v_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 w2v_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
@@ -92,8 +92,7 @@ def embed_image(images_b64, batch_size = 1):
 
             # Decode base64 and load PIL images only for this batch
             batch_images = [Image.open(BytesIO(base64.b64decode(b64))).convert("RGB") for b64 in batch_b64]
-            print("Retreived batch images")
-
+            
             # Process batch through CLIP
             inputs = clip_processor(images=batch_images, return_tensors="pt", padding=True)
             outputs = clip_model.get_image_features(**inputs)
@@ -115,28 +114,25 @@ def embed_image(images_b64, batch_size = 1):
 
 
 
-def embed_audio(audio, batch_size = 1):
-
+def embed_audio(audio, batch_size=1):
     start = time.time()
-
-    #Doesn't use batch size rn, will fix later (prolly not)
     all_e = []
 
     for b64_audio_str in audio:
-        # Step 1: Decode base64 to bytes
         audio_bytes = base64.b64decode(b64_audio_str)
         audio_buffer = BytesIO(audio_bytes)
 
-        waveform, sample_rate = torchaudio.load(audio_buffer)
+        # Use pydub to decode audio buffer into raw audio data
+        audio_segment = AudioSegment.from_file(audio_buffer)
+        
+        # Convert to mono and set sample rate to 16kHz
+        audio_segment = audio_segment.set_channels(1).set_frame_rate(16000)
+        
+        # Get raw samples as numpy array, normalized float32 between -1 and 1
+        samples = np.array(audio_segment.get_array_of_samples()).astype(np.float32) / (2**15)
 
-        # Resample if needed (Wav2Vec2 expects 16kHz)
-        if sample_rate != 16000:
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-            waveform = resampler(waveform)
-
-        # Mono channel only
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
+        # Convert to torch tensor
+        waveform = torch.from_numpy(samples).unsqueeze(0)  # shape (1, num_samples)
 
         inputs = w2v_processor(waveform.squeeze(), sampling_rate=16000, return_tensors="pt")
 
@@ -145,13 +141,12 @@ def embed_audio(audio, batch_size = 1):
             outputs = w2v_model(**inputs)
             embeddings = outputs.last_hidden_state.mean(dim=1)  # mean pool across time
             all_e.append(torch.flatten(embeddings))
-            
+
             del outputs
             del embeddings
 
-        del audio_buffer; del audio_bytes; del waveform
+        del audio_buffer; del audio_bytes; del waveform; del audio_segment; del samples
         gc.collect()
-
 
     end = time.time()
     print(f"Ran in {end - start}s")
@@ -160,9 +155,7 @@ def embed_audio(audio, batch_size = 1):
 
 
 
-
-def embed_video(base64_videos, batch_size=12, every_n_frames=10): #Batch size is patch size here my bad
-    
+def embed_video(base64_videos, batch_size=12, every_n_frames=10):
     start = time.time()
 
     clip_model.eval()
@@ -170,49 +163,39 @@ def embed_video(base64_videos, batch_size=12, every_n_frames=10): #Batch size is
 
     with torch.no_grad():
         for base64_str in base64_videos:
-            # Decode to temp file
+            # Decode base64 to raw bytes
             video_bytes = base64.b64decode(base64_str)
-            with tempfile.NamedTemporaryFile(suffix=".mp4") as temp_video:
-                temp_video.write(video_bytes)
-                temp_video.flush()
+            container = av.open(BytesIO(video_bytes))
 
-                # Load video with OpenCV
-                cap = cv2.VideoCapture(temp_video.name)
-                frames = []
-                count = 0
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    if count % every_n_frames == 0:
-                        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        frames.append(Image.fromarray(rgb))
-                    count += 1
-                cap.release()
+            # Decode video frames directly from memory
+            frames = []
+            for count, frame in enumerate(container.decode(video=0)):
+                if count % every_n_frames == 0:
+                    frames.append(frame.to_image())  # already RGB
 
-                # Batch frames → embeddings
-                all_embeddings = []
-                for i in range(0, len(frames), batch_size):
-                    batch = frames[i:i+batch_size]
-                    inputs = clip_processor(images=batch, return_tensors="pt", padding=True)
-                    feats = clip_model.get_image_features(**inputs)
-                    all_embeddings.append(feats)
+            # Batch frames → embeddings
+            all_embeddings = []
+            for i in range(0, len(frames), batch_size):
+                batch = frames[i:i+batch_size]
+                inputs = clip_processor(images=batch, return_tensors="pt", padding=True)
+                feats = clip_model.get_image_features(**inputs)
+                all_embeddings.append(feats)
 
-                # Mean-pool over frames
-                if all_embeddings:
-                    video_tensor = torch.cat(all_embeddings, dim=0)
-                    pooled = video_tensor.mean(dim=0)
-                    video_embeddings.append(pooled)
-                else:
-                    video_embeddings.append(torch.zeros(512))  # fallback if video is empty
+            # Mean-pool over frames
+            if all_embeddings:
+                video_tensor = torch.cat(all_embeddings, dim=0)
+                pooled = video_tensor.mean(dim=0)
+                video_embeddings.append(pooled)
+            else:
+                video_embeddings.append(torch.zeros(512))  # fallback
 
-                del temp_video; del all_embeddings;
-                gc.collect()
+            del frames, all_embeddings
+            gc.collect()
 
     end = time.time()
     print(f"Ran in {end - start}s")
 
-    return np.array(video_embeddings).flatten().tolist() # List of [512]-dim tensors
+    return np.array(video_embeddings).flatten().tolist()
 
 
 
@@ -232,11 +215,16 @@ def downsample_to_size(array, target_length):
 #Splitting lengths for embeddings and padding each (might not be the best approach)
 #Should keep same order and length for embeddings for diff categories tho
 def fit_embeddings_to_size(array, target_length):
+
+    print("Started fitting embeddings to size")
     
-    individual_length = target_length // len(array)
+    
+    individual_length = int(target_length / len(array))
+  
     fit_embeddings = [
         downsample_to_size(e, individual_length)
          for e in array[:-1]]
+    
     fit_embeddings.append(
         downsample_to_size(array[-1], target_length - (individual_length * (len(array) - 1)))
     )
@@ -246,6 +234,8 @@ def fit_embeddings_to_size(array, target_length):
         flattened = flattened + i
 
 
+    print("Fit embeddings to size")
+
     return flattened
 
 
@@ -254,16 +244,16 @@ def fit_embeddings_to_size(array, target_length):
 @profile
 def test():
     text = [generate_random_string(1024) for _ in range(3)]
-    audio = [file_to_base64("samples/city.m4a") for _ in range(2)]
-    video = [file_to_base64("samples/blood.mp4") for _ in range(2)]
-    image = [file_to_base64("samples/penguin.jpg") for _ in range(2)]
+    audio = [file_to_base64("./api/samples/city.m4a") for _ in range(2)]
+    video = [file_to_base64("./api/samples/blood.mp4") for _ in range(2)]
+    image = [file_to_base64("./api/samples/penguin.jpg") for _ in range(2)]
 
     text_embed = embed_text(text); print(f"Text embed done, size {np.array(text_embed).shape}\n")
     audio_embed = embed_audio(audio); print(f"Audio embed done, size {np.array(audio_embed).shape}\n")
     video_embed = embed_video(video); print(f"Video embed done, size {np.array(video_embed).shape}\n")
     image_embed = embed_image(image); print(f"Image embed done, size {np.array(image_embed).shape}\n")
 
-    complete = text_embed + audio_embed + video_embed + image_embed
+    complete = [text_embed , audio_embed , video_embed , image_embed]
     complete = fit_embeddings_to_size(complete, 1024)
     print(f"Complete done, shape {np.array(complete).shape}")
 
@@ -271,8 +261,7 @@ def test():
 
 
 try:
-    #test()
-    print("Skipping test for now")
+    test()
 except Exception as e:
     print(f"Ran into testing error: {e}")
 
@@ -341,4 +330,6 @@ def embed_mult():
         return {
             "error" : f"{e}"
         }
+
+
 

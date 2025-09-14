@@ -2,7 +2,10 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 export default function Join() {
-  const dburi = "http://localhost:2022/api";
+
+
+  const dburi = process.env.REACT_APP_DBAPI_URI;
+
   const navigate = useNavigate();
 
   async function login() {
@@ -51,7 +54,7 @@ export default function Join() {
       </div>
 
       {/* Login Form */}
-      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-8 shadow-[0_0_30px_#a855f7aa] backdrop-blur-sm">
+      <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl p-8 shadow-[0_0_10px_#a855f7aa] backdrop-blur-sm">
         <h1 className="text-4xl font-semibold text-purple-400 mb-10 text-left">
           Welcome Back
         </h1>

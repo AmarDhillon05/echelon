@@ -5,7 +5,20 @@ import axios from "axios";
 import pako from "pako";
 
 
-const embed_url = process.env.EMBED_API
+const embed_url = "https://dummy-6thkulny3-amardhillon05s-projects.vercel.app/"
+console.log(`\nUsing embed url = ${embed_url}\n`)
+
+
+//For testing req size
+function printJsonBodySize(json_body){
+  const jsonStr = JSON.stringify(json_body);
+  const sizeInBytes = Buffer.byteLength(jsonStr, "utf8");
+  const sizeInKB = sizeInBytes / 1024;
+  const sizeInMB = sizeInKB / 1024;
+
+  console.log(`Body size: ${sizeInBytes} bytes (${sizeInKB.toFixed(2)} KB, ${sizeInMB.toFixed(2)} MB)`);
+
+}
 
 
 // For sending to api
@@ -131,7 +144,7 @@ async function fetchAndClassify(url) {
 
 
 // Calling embed API
-export async function embed(input, requirements, size = 1024) {
+export async function embed(input, requirements, size = 1024, test = false) {
   let json_body = [];
 
   for (let req of requirements.filter(x => x.important === 'yes')) {
@@ -139,7 +152,10 @@ export async function embed(input, requirements, size = 1024) {
 
     if (req.list === 'yes') {
       if (req.amount === 'any') {
-        required_keys = [`${req.name} 0`];
+        required_keys = Object.keys(input).filter(
+          x => new RegExp(`^${req.name} \\d+$`).test(x)
+        );
+        //required_keys = [`${req.name} 0`];
       } else {
         required_keys = [];
         for (let i = 0; i < parseInt(req.amount); i++) {
@@ -179,8 +195,17 @@ export async function embed(input, requirements, size = 1024) {
     }
   }
 
+  
+  printJsonBodySize({ data : json_body })
+
+  json_body = {}
+
   const request = await axios.post(`${embed_url}/embed_mult`, { data: json_body });
-  return request.data.embeddings;
+  const e = JSON.parse(request.data.body).embedding
+
+  console.log(`Generated a proper embedding`)
+  return e;
+ 
 }
 
 

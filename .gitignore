@@ -3,3 +3,10 @@
 ../database/.env
 ../api/.env
 ../client/.env
+../api/env
+../api/dummy
+./docs
+./links
+.vercel
+key.pem
+key.pem.pub
