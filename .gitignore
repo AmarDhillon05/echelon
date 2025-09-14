@@ -1,10 +1,10 @@
-../database/node_modules
-../client/node_modules
-../database/.env
-../api/.env
-../client/.env
-../api/env
-../api/dummy
+./database/node_modules
+./client/node_modules
+./database/.env
+./api/.env
+./client/.env
+./api/env
+./api/dummy
 ./docs
 ./links
 .vercel
