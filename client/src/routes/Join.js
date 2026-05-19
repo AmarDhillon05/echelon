@@ -28,13 +28,8 @@ export default function Join() {
 
     try {
       const { data } = await axios.post(dburi + "/users/create", body);
-
-      if (!data.user) {
-        error.innerHTML = data.error;
-      } else {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        navigate("/dashboard");
-      }
+      localStorage.setItem("user", JSON.stringify(data.data.user));
+      navigate("/dashboard");
     } catch (err) {
       const message =
         err.response?.data?.error || "Something went wrong. Please try again.";

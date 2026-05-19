@@ -44,7 +44,7 @@ export default function Leaderboard() {
         { id }
       );
 
-      const ldb = data.leaderboard;
+      const ldb = data.data.leaderboard;
       ldb.id = id;
       setLd(ldb);
 
@@ -111,7 +111,7 @@ export default function Leaderboard() {
   async function confirmUser() {
     try {
       const { data } = await axios.post(api_link + "/users/get-user-data", { username: currentContributor });
-      return !data.error;
+      return data.success === true;
     } catch {
       return false;
     }
@@ -151,20 +151,17 @@ export default function Leaderboard() {
     };
 
     try {
-      const { data } = await axios.post(api_link + "/leaderboard/createSubmission", body);
-      if (data.error) {
-        document.getElementById("subErrText").innerHTML = data.error;
-      } else {
-        form.reset();
-        setContributors([]);
-        setCurrentContributor("");
-        setContributorValid(null);
-        document.getElementById("subErrText").innerHTML = "";
-        document.getElementById("subConfText").innerHTML = "Successfully submitted!";
-        await updateLd();
-      }
-    } catch {
-      document.getElementById("subErrText").innerHTML = "Unable to submit.";
+      await axios.post(api_link + "/leaderboard/createSubmission", body);
+      form.reset();
+      setContributors([]);
+      setCurrentContributor("");
+      setContributorValid(null);
+      document.getElementById("subErrText").innerHTML = "";
+      document.getElementById("subConfText").innerHTML = "Successfully submitted!";
+      await updateLd();
+    } catch (err) {
+      const message = err.response?.data?.error || "Unable to submit.";
+      document.getElementById("subErrText").innerHTML = message;
     }
   }
 

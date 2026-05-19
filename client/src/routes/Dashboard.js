@@ -41,13 +41,13 @@ export default function Dashboard() {
 
     for (const id of user.leaderboardIds || []) {
       const { data } = await axios.post(api_link + "/leaderboard/getLeaderboardById", { id });
-      data.leaderboard.id = id;
-      leaderboard.push(data.leaderboard);
+      data.data.leaderboard.id = id;
+      leaderboard.push(data.data.leaderboard);
     }
 
     for (const id of user.submissions || []) {
       const { data } = await axios.post(api_link + "/leaderboard/getSubmissionById", { id });
-      sub.push(data.submission);
+      sub.push(data.data.submission);
     }
 
     setLeaderboardData(leaderboard);

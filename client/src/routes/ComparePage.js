@@ -46,8 +46,8 @@ export default function ComparePage() {
         leaderboard: ld_name,
         previousPicks : prevPicks,
       });
-    
-      setChoices(data);
+
+      setChoices(data.data);
     }
   }
 
@@ -64,7 +64,7 @@ export default function ComparePage() {
           { id }
         );
 
-        const ldb = data.leaderboard;
+        const ldb = data.data.leaderboard;
         setLd(ldb);
         setLdName(ldb.name);
         submitAndPoll("");

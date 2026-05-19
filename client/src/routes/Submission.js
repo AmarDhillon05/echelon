@@ -34,7 +34,7 @@ export default function SubmissionPage() {
       { id: leaderboardId }
     );
 
-    const ldb = data.leaderboard;
+    const ldb = data.data.leaderboard;
     setLd(ldb);
     setLdName(ldb.name);
 
@@ -62,7 +62,7 @@ export default function SubmissionPage() {
     const { data } = await axios.post(api_link + "/leaderboard/getSubmissionById", {
       id: subid,
     });
-    setCurrentSubmission(data.submission);
+    setCurrentSubmission(data.data.submission);
   }
 
 

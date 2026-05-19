@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
 import express from "express";
-import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
 import User from "../models/user.model.js";
@@ -12,131 +11,84 @@ const app = express.Router();
 
 connectDB();
 
-
-/*
-require("dotenv").config();
-
-const express = require("express");
-const mongoose = require("mongoose");
-
-const app = express.Router();
-
-const User = require("../models/user.model.js");
-const bcrypt = require("bcrypt");
-
-
-require("../config/db.config")();
-*/
-
 app.get("/", (req, res) => {
   res.send("Hello from the users api!");
 });
 
-
-
-
-
-
-
 app.post("/create", async (req, res) => {
-  console.log("Got a create request")
   try {
-    console.log(req.body)
-    if (req.body.username && req.body.password && req.body.email) {
-      let password = await bcrypt.hash(req.body.password, 3);
-      const body = {
-        username: req.body.username,
-        password : password,
-        email : req.body.email
-      };
+    const { username, password, email } = req.body;
 
-      //Identity checks
-      if(req.body.username){
-        let user = await User.findOne({ username: req.body.username });
-        if(user){
-          res.status(500).json({ error:"Username is already taken" })
-        }
-      }
-      else if(req.body.email){
-        let user = await User.findOne({password: email})
-        if(user){
-          res.status(500).json({ error:"Email is already taken" })
-        }
-      }
-
-      const user = await User.create(body);
-      res.status(200).json({ user, success: true });
+    if (!username || !password || !email) {
+      return res.status(400).json({ success: false, error: "Must provide username, password, and email" });
     }
+
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return res.status(409).json({ success: false, error: "Username is already taken" });
+    }
+
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(409).json({ success: false, error: "Email is already taken" });
+    }
+
+    const hashed = await bcrypt.hash(password, 3);
+    const user = await User.create({ username, password: hashed, email });
+
+    res.status(201).json({ success: true, data: { user } });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ success: false, error: e.message });
   }
 });
-
-
-
-//TODO - add email verificaiton
 
 app.post("/sign-in", async (req, res) => {
   try {
-    let user = await User.findOne({ username: req.body.username });
+    const { username, password } = req.body;
 
-    if (!user) return res.status(500).json({ error: "Invalid Username" });
-
-    if (req.body.username && req.body.password) {
-      if (!(await bcrypt.compare(req.body.password, user.password)))
-        return res.status(500).json({ error: "Incorrect Password" });
-      else {
-        res.status(200).json({ user, success: true });
-      }
+    if (!username || !password) {
+      return res.status(400).json({ success: false, error: "Must provide username and password" });
     }
+
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Invalid Username" });
+    }
+
+    if (!(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ success: false, error: "Incorrect Password" });
+    }
+
+    res.status(200).json({ success: true, data: { user } });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ success: false, error: e.message });
   }
 });
-
-
-
-
 
 app.post("/get-user-data", async (req, res) => {
   try {
-    if (req.body.email) {
-      let user = await User.findOne({ email: req.body.email });
-      if (!user) return res.status(404).json({ error: "user cannot be found" });
-      res.status(200).json({ user, success: true });
+    const { email, username } = req.body;
+
+    if (email) {
+      const user = await User.findOne({ email });
+      if (!user) return res.status(404).json({ success: false, error: "user cannot be found" });
+      return res.status(200).json({ success: true, data: { user } });
     }
-    else if(req.body.username){
-      let user = await User.findOne({ username: req.body.username });
-      if (!user) return res.status(404).json({ error: "user cannot be found" });
-      res.status(200).json({ user, success: true });
+
+    if (username) {
+      const user = await User.findOne({ username });
+      if (!user) return res.status(404).json({ success: false, error: "user cannot be found" });
+      return res.status(200).json({ success: true, data: { user } });
     }
+
+    res.status(400).json({ success: false, error: "Must provide email or username" });
   } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-})
-
-app.post("/update", async (req, res) => {
-  try {
-
-    if(req.body.username){
-      let user = await User.findOne({ username: req.body.username });
-      if(user){
-        res.status(500).json({ error:"Username is already taken" })
-      }
-    }
-    else if(req.body.email){
-      let user = await User.findOne({password: email})
-      if(user){
-        res.status(500).json({ error:"Email is already taken" })
-      }
-    }
-
-    res.status(500).json({ error : "Must give username or email to update with" });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
+app.post("/update", async (req, res) => {
+  res.status(501).json({ success: false, error: "Not implemented" });
+});
 
-export default app
-//module.exports = app
+export default app;

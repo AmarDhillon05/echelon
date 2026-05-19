@@ -90,18 +90,12 @@ export default function AddLd({ show, exit, ldStateUpdate }) {
     };
     try {
       const { data } = await axios.post(dburi + "/leaderboard/createLeaderboard", body);
-      if (data.error) {
-        document.getElementById("reqErrText").innerHTML = `Ran into error: ${data.error}`;
-      } else {
-        console.log(data)
-        localStorage.setItem("user", JSON.stringify(data.user));
-        ldStateUpdate(data.user);
-        exit();
-      }
-
-      
+      localStorage.setItem("user", JSON.stringify(data.data.user));
+      ldStateUpdate(data.data.user);
+      exit();
     } catch (e) {
-      document.getElementById("reqErrText").innerHTML = `Ran into error: ${e.message}`;
+      const errMsg = e.response?.data?.error || e.message;
+      document.getElementById("reqErrText").innerHTML = `Ran into error: ${errMsg}`;
     }
   }
 

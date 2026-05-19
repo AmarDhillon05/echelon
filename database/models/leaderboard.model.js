@@ -32,9 +32,14 @@ const leaderboardSchema = new Schema({
     default: {} //To be sorted easily for extraction, is {id : {elo: 0, rank: 0}} (not all info to keep things light)
   },
   locked: {
-    type: Boolean, 
+    type: Boolean,
     required: false,
     default: false //Locked - cannot be submitted to
+  },
+  n_votes: {
+    type: Number,
+    required: false,
+    default: 0
   }
 });
 
