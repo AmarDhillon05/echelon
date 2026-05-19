@@ -1,11 +1,52 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import pako from "pako";
 import Navbar from "../components/Navbar";
 
 
 
+
+function MultipleInputList({ req }) {
+  const [items, setItems] = useState([0]);
+  const nextId = useRef(1);
+
+  const addItem = () => {
+    setItems([...items, nextId.current++]);
+  };
+
+  const removeItem = (id) => {
+    setItems(items.filter((x) => x !== id));
+  };
+
+  return (
+    <div className="space-y-2">
+      {items.map((id, index) => (
+        <div key={id} className="flex gap-2 items-center">
+          <input
+            type={["text", "link"].includes(req.type) ? "text" : "file"}
+            name={`${req.name} ${index}`}
+            className="bg-black text-white p-2 rounded w-full border border-purple-700"
+          />
+          <input
+            type="text"
+            name={`${req.name} ${index} caption`}
+            placeholder="Caption"
+            className="bg-black text-white p-2 rounded border border-purple-700 w-full"
+          />
+          {items.length > 1 && (
+            <button type="button" onClick={() => removeItem(id)} className="text-red-500 px-2 py-1">
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={addItem} className="text-sm text-purple-400 hover:underline">
+        + Add another
+      </button>
+    </div>
+  );
+}
 
 export default function Leaderboard() {
   const navigate = useNavigate();
@@ -17,8 +58,6 @@ export default function Leaderboard() {
   const [currentContributor, setCurrentContributor] = useState("");
   const [contributorValid, setContributorValid] = useState(null);
   const [user, setUser] = useState({});
-  const [inputs, setInputs] = useState([""]);
-  const [captions, setCaptions] = useState([""]);
   const [expanded, setExpanded] = useState(false);
 
   // Initial setup
@@ -125,28 +164,32 @@ export default function Leaderboard() {
   // Form submit
   async function newSubmission(e) {
     e.preventDefault();
+    document.getElementById("subErrText").innerHTML = "";
+    document.getElementById("subConfText").innerHTML = "";
+
     const form = document.getElementById("submission");
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
     for (const [key, value] of Object.entries(data)) {
       if (value instanceof File && value.size > 0) {
-        const dtype = ld.required?.find((x) => x.name === key)?.type || "";
+        const dtype = ld.required?.find((x) => key === x.name || key.startsWith(x.name + " "))?.type || "";
         if (!value.type.includes(dtype)) {
           document.getElementById("subErrText").innerHTML = `Wrong file type for "${key}"`;
           return;
         }
-        data[key] = await compressFileToBase64(value);
-      } else if (!value) {
+        data[key] = (await compressFileToBase64(value)).base64;
+      } else if (value instanceof File ? value.size === 0 : !value) {
         document.getElementById("subErrText").innerHTML = "Fill out all fields!";
         return;
       }
     }
 
+    const { name: subName, ...fieldData } = data;
     const body = {
-      data,
+      data: fieldData,
       contributors: [...contributors, user.username],
-      name: data.name,
+      name: subName,
       leaderboard: ld.name,
     };
 
@@ -156,54 +199,12 @@ export default function Leaderboard() {
       setContributors([]);
       setCurrentContributor("");
       setContributorValid(null);
-      document.getElementById("subErrText").innerHTML = "";
       document.getElementById("subConfText").innerHTML = "Successfully submitted!";
       await updateLd();
     } catch (err) {
       const message = err.response?.data?.error || "Unable to submit.";
       document.getElementById("subErrText").innerHTML = message;
     }
-  }
-
-  // For "any" type inputs
-  function MultipleInputList({ req }) {
-    const addInput = () => {
-      setInputs([...inputs, ""]);
-      setCaptions([...captions, ""]);
-    };
-
-    const removeInput = (index) => {
-      setInputs(inputs.filter((_, i) => i !== index));
-      setCaptions(captions.filter((_, i) => i !== index));
-    };
-
-    return (
-      <div className="space-y-2">
-        {inputs.map((_, index) => (
-          <div key={index} className="flex gap-2 items-center">
-            <input
-              type={["text", "link"].includes(req.type) ? "text" : "file"}
-              name={`${req.name} ${index}`}
-              className="bg-black text-white p-2 rounded w-full border border-purple-700"
-            />
-            <input
-              type="text"
-              name={`${req.name} ${index} caption`}
-              placeholder="Caption"
-              className="bg-black text-white p-2 rounded border border-purple-700 w-full"
-            />
-            {inputs.length > 1 && (
-              <button type="button" onClick={() => removeInput(index)} className="text-red-500 px-2 py-1">
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
-        <button type="button" onClick={addInput} className="text-sm text-purple-400 hover:underline">
-          + Add another
-        </button>
-      </div>
-    );
   }
 
   return (
