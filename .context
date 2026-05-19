@@ -1,0 +1,55 @@
+# Session Context — 2026-05-19
+
+## Active branch
+`frontend-submission-fixes` (branched from `database-tests`)
+
+## What was done this session
+
+### Branch: database-tests (commit 82bb89d1)
+1. **Vitest test suite** added under `database/tests/`:
+   - `tests/setup.js` — MongoMemoryServer lifecycle, clears collections after each test
+   - `tests/utils/slug.test.js` — encodeString/decodeString, dummyEmbed, base64 round-trips
+   - `tests/models/` — user, leaderboard, submission model tests
+   - `tests/routes/authRoutes.test.js`, `ldRoutes.test.js`, `rankRoutes.test.js` — full route tests via supertest
+   - Pinecone mocked as a class (`class MockPinecone`) so `new Pinecone()` works
+   - `database/vitest.config.js` added
+
+2. **API standardization** — all three route files rewritten to use `{ success: true, data: {...} }` / `{ success: false, error: "..." }` envelope with correct HTTP status codes. Pre-existing bugs fixed:
+   - `authRoutes.js`: missing `return` after duplicate-username check, email check was reading `password` field
+   - `ldRoutes.js`: `res.status("500")` (string) → `res.status(400)`, not-found returns 404 not 500
+   - `rankRoutes.js`: n_votes update was double-encoding the leaderboard name
+   - `leaderboard.model.js`: added `n_votes` field (was missing from schema, Mongoose silently dropped `$set`)
+
+3. **Frontend updated** to read `data.data.*` instead of `data.*` in all pages and components:
+   - `Join.js`, `Login.js`, `Dashboard.js`, `ComparePage.js`, `Leaderboard.js`, `Submission.js`, `AddLd.js`
+
+4. **Docs written**:
+   - `database/docs/api.md` — full API reference
+   - `database/docs/testing.md` — route-by-route testing guide
+   - `client/docs/frontend.md` — frontend architecture, pages, components, compression pipeline
+
+5. **Env fix**: `REACT_APP_DBAPI_URI` in `client/.env.example` corrected from `http://localhost:2022` to `http://localhost:2022/api` (all frontend calls append `/users/...`, `/leaderboard/...` etc. without the `/api` prefix, so it must be in the base URI).
+
+### Branch: frontend-submission-fixes (commit 271e66ec)
+Bugs fixed in `client/src/routes/Leaderboard.js` submission flow:
+- **Critical**: `compressFileToBase64` returns `{ base64, mimeType }` — was stored directly so all file uploads sent `[object Object]`. Fixed to use `.base64`.
+- **Important**: Submission `name` was left inside `body.data` alongside required fields. Now destructured out before building the body.
+- **Medium**: Empty `File` inputs (size === 0) are truthy, so `!value` didn't catch them. Fixed guard: `value instanceof File ? value.size === 0 : !value`.
+- **Medium**: `MultipleInputList` was defined inside `Leaderboard` (re-created on every render) and used parent-level `inputs`/`captions` state — two `amount=any` fields would collide. Moved outside with its own `useRef`-stable item list.
+- **Minor**: Stale "Successfully submitted!" message persisted into the next attempt. Both messages now cleared at the top of each submit call.
+
+## Environment
+- `client/.env` — `REACT_APP_DBAPI_URI=http://localhost:2022/api`, `REACT_APP_PYAPI_URI` is blank (needs filling)
+- `database/.env` — all values present (DB_URI, PC_KEY, PORT=2022, NODE_ENV=development)
+
+## Stack
+- **Backend**: Node/Express, MongoDB/Mongoose, Pinecone (vector DB), deployed on Vercel
+- **Frontend**: React 19 (CRA), React Router v7, Axios, Tailwind CSS, pako (compression)
+- **Tests**: Vitest, mongodb-memory-server, supertest
+
+## Known remaining gaps
+- `REACT_APP_PYAPI_URI` in `client/.env` is still blank — needs the Python scraping API URL
+- `database-tests` branch has not been merged to `main`
+- `frontend-submission-fixes` branch has not been merged to `main` or `database-tests`
+- `POST /api/users/update` returns 501 (not implemented)
+- File type validation for list fields uses `key.startsWith(x.name + " ")` match — works but doesn't validate against captions keys (which have ` caption` suffix); benign since caption inputs are always text
