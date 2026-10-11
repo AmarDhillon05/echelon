@@ -41,9 +41,8 @@ app.get("/", (req, res) => {
 app.post("/create", async (req, res) => {
   console.log("Got a create request")
   try {
-    console.log(req.body)
     if (req.body.username && req.body.password && req.body.email) {
-      let password = await bcrypt.hash(req.body.password, 3);
+      let password = await bcrypt.hash(req.body.password, 12);
       const body = {
         username: req.body.username,
         password : password,
