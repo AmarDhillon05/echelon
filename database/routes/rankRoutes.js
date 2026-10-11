@@ -234,10 +234,12 @@ app.post("/rank", async (req, res) => {
   // Calculating elo change, softening it for lower similarities
   let eloWinner = winner.elo >= 100 ? winner.elo : 100; // Since minimum is 100
   let eloLoser = loser.elo >= 100 ? loser.elo : 100;
+  //e is the winner's expected score, so the gain is 1 - e: beating a stronger
+  //opponent moves ratings more than beating a weaker one
   const e = 1 / (1 + 10 ** ((loser.elo - winner.elo) / 400));
   const k = 40;
-  eloWinner += k * similarity * e;
-  eloLoser -= k * similarity * e;
+  eloWinner += k * similarity * (1 - e);
+  eloLoser -= k * similarity * (1 - e);
   
   //Reclamp
   eloWinner = Math.max(eloWinner, 100);
